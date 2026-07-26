@@ -23,19 +23,20 @@ This project was developed as part of the MSCS-532 Algorithms and Data Structure
 
 ```
 global-dependency-risk-simulator/
-│
 ├── models.py
 ├── dependency_graph.py
 ├── simulator.py
 ├── sample_data.py
 ├── main.py
-│
 ├── tests/
+│   ├── __init__.py
 │   ├── test_dependency_graph.py
-│   ├── test_simulator.py
-│
+│   └── test_simulator.py
 ├── test_graph_manual.py
 ├── test_simulator_manual.py
+├── report.md
+├── requirements.txt
+├── .gitignore
 └── README.md
 ```
 
@@ -118,33 +119,68 @@ The simulator propagates disruption through outgoing dependencies while reducing
 
 ---
 
-## Example Output
+## Output
 
-```
-Graph Summary
+=================================================================
+GLOBAL DEPENDENCY AND CASCADING RISK SIMULATOR
+=================================================================
 
-Entities: 7
-Dependencies: 7
+Number of entities: 7
+Number of dependencies: 7
 
-BFS Traversal
+Reachable entities using breadth-first traversal:
+1. Semiconductor Production (semiconductors)
+2. Consumer Electronics (electronics)
+3. Automobile Manufacturing (automotive)
+4. Cloud Infrastructure (cloud)
+5. Global Logistics (logistics)
+6. Digital Financial Services (finance)
+7. Retail Operations (retail)
 
-semiconductors
-electronics
-automotive
-cloud
-finance
-retail
-logistics
+-----------------------------------------------------------------
+SIMULATION RESULTS
+-----------------------------------------------------------------
 
-Impact Ranking
+Initial disruption: Semiconductor Production
+Initial impact: 1.0000
 
-semiconductors : 1.0000
-electronics : 0.8100
-automotive : 0.6800
-cloud : 0.4536
-...
-```
-
+Ranked cascading impacts:
+1. Semiconductor Production
+   ID: semiconductors
+   Type: resource
+   Region: Global
+   Impact: 1.0000
+2. Consumer Electronics
+   ID: electronics
+   Type: industry
+   Region: Global
+   Impact: 0.8100
+3. Automobile Manufacturing
+   ID: automotive
+   Type: industry
+   Region: Global
+   Impact: 0.6800
+4. Cloud Infrastructure
+   ID: cloud
+   Type: infrastructure
+   Region: Global
+   Impact: 0.4536
+5. Digital Financial Services
+   ID: finance
+   Type: service
+   Region: Global
+   Impact: 0.3393
+6. Global Logistics
+   ID: logistics
+   Type: service
+   Region: Global
+   Impact: 0.3060
+7. Retail Operations
+   ID: retail
+   Type: industry
+   Region: Global
+   Impact: 0.2381
+   
 ---
 
 ## Testing
