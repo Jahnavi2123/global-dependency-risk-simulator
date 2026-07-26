@@ -1,0 +1,12 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Pytest cache
+.pytest_cache/
+
+# macOS
+.DS_Store
