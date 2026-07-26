@@ -6,8 +6,6 @@ The Global Dependency Risk Simulator is a Python-based application that models d
 
 This project was developed as part of the MSCS-532 Algorithms and Data Structures course to demonstrate practical applications of graph data structures, graph traversal algorithms, and simulation techniques.
 
----
-
 ## Features
 
 - Graph-based representation of global dependencies
