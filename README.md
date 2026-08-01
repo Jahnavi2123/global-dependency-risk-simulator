@@ -2,198 +2,231 @@
 
 ## Overview
 
-The Global Dependency Risk Simulator is a Python-based application that models dependencies between industries, infrastructure, and resources using a directed graph. The project simulates how disruptions in one entity can propagate through connected systems, allowing users to observe cascading impacts across a dependency network.
+The Global Dependency Risk Simulator is a Python application that models relationships among global resources, industries, infrastructure systems, and services using a directed graph.
 
-This project was developed as part of the MSCS-532 Algorithms and Data Structures course to demonstrate practical applications of graph data structures, graph traversal algorithms, and simulation techniques.
+The application demonstrates how a disruption affecting one entity can propagate to connected entities. Impact values are calculated using dependency strength and destination criticality.
+
+Phase 3 extends the original proof of concept with caching, faster duplicate-edge detection, synthetic dataset generation, stress testing, runtime measurement, memory analysis, and performance visualization.
 
 ## Features
 
-- Graph-based representation of global dependencies
-- Add and remove entities
-- Add and remove dependency relationships
-- Breadth-First Search (BFS) traversal
+- Directed adjacency-list graph
+- Entity and dependency insertion
+- Entity and dependency deletion
+- Average O(1) entity lookup
+- Average O(1) duplicate dependency checks
+- Breadth-First Search traversal
 - Cascading risk simulation
-- Impact ranking
-- Human-readable impact summaries
-- Automated unit tests using pytest
-
----
+- Impact ranking and readable summaries
+- Cached repeated simulations
+- Automatic cache invalidation after graph changes
+- Synthetic large-scale graph generation
+- Runtime and memory benchmarking
+- CSV result export
+- Performance graph generation
+- Automated tests using pytest
 
 ## Project Structure
 
-```
+```text
 global-dependency-risk-simulator/
 ├── models.py
 ├── dependency_graph.py
 ├── simulator.py
+├── optimized_simulator.py
+├── synthetic_data.py
 ├── sample_data.py
 ├── main.py
+├── benchmark.py
+├── benchmark_results/
+│   ├── performance_results.csv
+│   ├── benchmark_summary.txt
+│   └── runtime_comparison.png
 ├── tests/
 │   ├── __init__.py
 │   ├── test_dependency_graph.py
-│   └── test_simulator.py
+│   ├── test_simulator.py
+│   └── test_optimization.py
 ├── test_graph_manual.py
 ├── test_simulator_manual.py
 ├── report.md
+├── report_deliverable3.md
 ├── requirements.txt
 ├── .gitignore
 └── README.md
 ```
 
----
-
 ## Requirements
 
 - Python 3.10 or later
 - pytest
+- matplotlib
 
-Install pytest:
+Install project dependencies:
 
 ```bash
-pip install pytest
+python -m pip install -r requirements.txt
 ```
 
----
+## Running the Main Application
 
-## Running the Program
-
-Execute:
+Run:
 
 ```bash
 python main.py
 ```
 
-The program will:
+The application will:
 
-- Build the sample dependency network
-- Display graph statistics
-- Perform BFS traversal
-- Simulate cascading risk
-- Display ranked impacts
+1. Build the seven-entity sample graph.
+2. Display the number of entities and dependencies.
+3. Perform Breadth-First Search traversal.
+4. Simulate a semiconductor disruption.
+5. Display ranked cascading impacts.
 
----
+## Running the Tests
 
-## Running Tests
-
-Run all unit tests using:
+Run:
 
 ```bash
 python -m pytest -v
 ```
 
-Expected output:
+Expected result after Phase 3:
 
+```text
+24 passed
 ```
-13 passed
+
+## Phase 3 Optimizations
+
+### Set-Based Dependency Index
+
+The graph continues to store complete Dependency objects in an adjacency list. A second set-based index stores target IDs for each source.
+
+This changes duplicate-edge detection from a linear scan of the outgoing list to average O(1) set membership.
+
+### Graph Versioning
+
+The graph maintains a version number that increases after every entity or dependency modification.
+
+The optimized simulator includes this number in its cache key. Therefore, changing the graph automatically prevents an outdated simulation from being reused.
+
+### Scenario Caching
+
+The `CachedCascadingRiskSimulator` stores completed simulations using:
+
+- Graph version
+- Starting entity
+- Initial disruption strength
+- Minimum impact threshold
+
+Repeated identical requests can return stored results without performing another complete traversal.
+
+### Synthetic Dataset Generation
+
+The `synthetic_data.py` module creates reproducible graphs with hundreds or thousands of entities. A fixed random seed ensures that performance tests can be repeated using the same dataset structure.
+
+## Running the Benchmark
+
+Run:
+
+```bash
+python benchmark.py
 ```
 
----
+The benchmark evaluates graphs containing:
 
-## Algorithms Used
+- 100 entities
+- 500 entities
+- 1,000 entities
+- 5,000 entities
 
-### Directed Graph
+Each graph is evaluated using 25 identical disruption simulations.
 
-The dependency network is represented as a directed graph where:
+The script generates:
 
-- Vertices represent entities
-- Directed edges represent dependencies
-
-### Breadth-First Search (BFS)
-
-BFS is used to traverse the dependency network level by level from a selected starting entity.
-
-Time Complexity:
-
+```text
+benchmark_results/performance_results.csv
+benchmark_results/benchmark_summary.txt
+benchmark_results/runtime_comparison.png
 ```
+
+## Algorithms and Complexity
+
+### Entity Lookup
+
+Python dictionaries provide average O(1) entity insertion and retrieval.
+
+### Duplicate Dependency Check
+
+The Phase 3 target-ID sets provide average O(1) duplicate checking.
+
+### Breadth-First Search
+
+BFS runs in:
+
+```text
 O(V + E)
 ```
 
 where:
 
-- V = number of entities
-- E = number of dependencies
+- `V` is the number of entities.
+- `E` is the number of dependencies.
 
-### Cascading Risk Simulation
+### Impact Ranking
 
-The simulator propagates disruption through outgoing dependencies while reducing the impact according to dependency strength and entity criticality.
+Sorting impact results requires:
 
----
+```text
+O(V log V)
+```
 
-## Output
+### Cached Simulation
 
-=================================================================
-GLOBAL DEPENDENCY AND CASCADING RISK SIMULATOR
-=================================================================
+The first execution still requires graph traversal. A repeated cache hit requires average O(1) dictionary lookup plus the cost of copying the result dictionary.
 
-Number of entities: 7
-Number of dependencies: 7
+## Benchmark Results
 
-Reachable entities using breadth-first traversal:
-1. Semiconductor Production (semiconductors)
-2. Consumer Electronics (electronics)
-3. Automobile Manufacturing (automotive)
-4. Cloud Infrastructure (cloud)
-5. Global Logistics (logistics)
-6. Digital Financial Services (finance)
-7. Retail Operations (retail)
+The actual benchmark results are stored in:
 
------------------------------------------------------------------
-SIMULATION RESULTS
------------------------------------------------------------------
+```text
+benchmark_results/performance_results.csv
+```
 
-Initial disruption: Semiconductor Production
-Initial impact: 1.0000
+The runtime graph is stored in:
 
-Ranked cascading impacts:
-1. Semiconductor Production
-   ID: semiconductors
-   Type: resource
-   Region: Global
-   Impact: 1.0000
-2. Consumer Electronics
-   ID: electronics
-   Type: industry
-   Region: Global
-   Impact: 0.8100
-3. Automobile Manufacturing
-   ID: automotive
-   Type: industry
-   Region: Global
-   Impact: 0.6800
-4. Cloud Infrastructure
-   ID: cloud
-   Type: infrastructure
-   Region: Global
-   Impact: 0.4536
-5. Digital Financial Services
-   ID: finance
-   Type: service
-   Region: Global
-   Impact: 0.3393
-6. Global Logistics
-   ID: logistics
-   Type: service
-   Region: Global
-   Impact: 0.3060
-7. Retail Operations
-   ID: retail
-   Type: industry
-   Region: Global
-   Impact: 0.2381
-   
----
+```text
+benchmark_results/runtime_comparison.png
+```
 
-## Testing
+## Testing Coverage
 
-The project includes automated tests for:
+The tests validate:
 
-- Entity management
-- Dependency management
-- Graph traversal
-- Error handling
-- Cascading simulation
-- Impact ranking
-- Summary generation
+- Entity insertion
+- Duplicate entities
+- Dependency creation
+- Missing endpoints
+- Dependency removal
+- Entity removal
+- BFS traversal
+- Impact propagation
+- Invalid simulation parameters
+- Impact thresholds
+- Ranking and summary generation
+- Cache hits and misses
+- Cache-result protection
+- Cache invalidation after graph changes
+- Graph version changes
+- Duplicate dependency optimization
+- Synthetic graph scaling
+- Synthetic graph reproducibility
+- Invalid synthetic dataset parameters
 
-All tests currently pass successfully.
+## Author
 
+Jahnavi Dammannagari  
+University of the Cumberlands  
+MSCS-532 – Algorithms and Data Structures

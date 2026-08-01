@@ -1,0 +1,5 @@
+entities,dependencies,repetitions,baseline_time_ms,optimized_time_ms,speedup,baseline_peak_memory_kib,optimized_peak_memory_kib
+100,294,25,1.0675,0.0236,45.26,2.65,2.39
+500,1494,25,4.0656,0.0258,157.38,8.36,4.75
+1000,2994,25,5.845,0.024,243.54,8.36,3.69
+5000,14994,25,26.909,0.0466,577.14,29.41,12.75
