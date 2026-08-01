@@ -4,12 +4,11 @@ The graph stores countries, industries, resources, infrastructure systems,
 and services as nodes. Directed edges represent dependency relationships
 between those entities.
 
-For example:
+Phase 3 adds two optimizations:
 
-Semiconductor Production -> Automobile Manufacturing
-
-This means that automobile manufacturing may be affected when semiconductor
-production is disrupted.
+1. A set-based target index for faster duplicate dependency checks.
+2. A graph version number that allows cached simulation results to become
+   invalid automatically after the graph changes.
 """
 
 from collections import deque
@@ -20,93 +19,110 @@ from models import Dependency, Entity
 class DependencyGraph:
     """Store entities and directed dependency relationships.
 
-    Two dictionaries are used:
+    The graph uses an adjacency list because global dependency networks are
+    generally sparse. Most entities connect to only a small portion of all
+    other entities, so an adjacency list uses less memory than an adjacency
+    matrix.
 
-    1. ``entities`` stores each Entity using its unique ID as the key.
-       This provides average O(1) insertion and lookup.
+    Three supporting structures are maintained:
 
-    2. ``adjacency_list`` stores the outgoing dependencies for every entity.
-       An adjacency list is suitable because a real dependency network is
-       usually sparse. Most entities are connected to only a small portion
-       of all other entities.
+    * ``entities`` provides average O(1) entity lookup.
+    * ``adjacency_list`` stores complete outgoing Dependency objects.
+    * ``_adjacency_targets`` provides average O(1) duplicate-edge checks.
     """
 
     def __init__(self) -> None:
         """Create an empty dependency graph."""
 
-        # Store entities by their unique identifiers. Using a dictionary avoids
-        # scanning through a list whenever the program needs to locate an entity.
+        # Store every Entity using its unique ID as the dictionary key.
+        # This avoids scanning through a list during entity lookup.
         self.entities: dict[str, Entity] = {}
 
-        # Each key represents a source entity. Its value is a list containing
-        # all directed dependencies that leave that source entity.
+        # Each source entity maps to a list of outgoing Dependency objects.
+        # Lists preserve insertion order, which makes traversal predictable.
         self.adjacency_list: dict[str, list[Dependency]] = {}
+
+        # This additional index stores only target IDs. It allows duplicate
+        # dependencies to be detected in average O(1) time rather than by
+        # scanning the complete outgoing dependency list.
+        self._adjacency_targets: dict[str, set[str]] = {}
+
+        # The version changes whenever the graph structure changes. Cached
+        # simulations include this version in their cache key, preventing an
+        # outdated result from being returned after an update.
+        self._version = 0
+
+    @property
+    def version(self) -> int:
+        """Return the graph's current structural version."""
+
+        return self._version
 
     def add_entity(self, entity: Entity) -> None:
         """Insert a new entity into the graph.
 
         Args:
-            entity: The Entity object that should be added.
+            entity: Entity object to add.
 
         Raises:
             TypeError: If the supplied value is not an Entity.
-            ValueError: If an entity with the same ID already exists.
+            ValueError: If the entity ID already exists.
         """
 
-        # Checking the type provides a clearer error than allowing an unrelated
-        # object to fail later when the code tries to access ``entity_id``.
         if not isinstance(entity, Entity):
-            raise TypeError("Only Entity objects can be added to the graph.")
+            raise TypeError(
+                "Only Entity objects can be added to the graph."
+            )
 
-        # Entity IDs must remain unique because they are dictionary keys.
-        # Allowing a duplicate would overwrite the original entity and could
-        # leave its existing dependency edges in an inconsistent state.
+        # Entity IDs are dictionary keys and must remain unique. Allowing a
+        # duplicate could overwrite an existing entity while leaving its
+        # dependencies in an inconsistent state.
         if entity.entity_id in self.entities:
             raise ValueError(
                 f"Entity '{entity.entity_id}' already exists."
             )
 
-        # Insert the entity into the dictionary for efficient lookup.
         self.entities[entity.entity_id] = entity
-
-        # Every entity receives an empty adjacency list when it is inserted.
-        # Dependencies can then be added to this list later.
         self.adjacency_list[entity.entity_id] = []
+        self._adjacency_targets[entity.entity_id] = set()
+
+        # Every structural modification creates a new graph version.
+        self._version += 1
 
     def get_entity(self, entity_id: str) -> Entity:
-        """Return an entity using its unique identifier.
+        """Retrieve an entity using its unique identifier.
 
         Args:
-            entity_id: The ID of the entity to locate.
+            entity_id: ID of the entity to retrieve.
 
         Returns:
-            The matching Entity object.
+            Matching Entity object.
 
         Raises:
             KeyError: If the entity does not exist.
         """
 
-        # Dictionary lookup normally takes average O(1) time, which is more
-        # efficient than searching through every entity in a list.
         if entity_id not in self.entities:
-            raise KeyError(f"Entity '{entity_id}' was not found.")
+            raise KeyError(
+                f"Entity '{entity_id}' was not found."
+            )
 
         return self.entities[entity_id]
 
     def add_dependency(self, dependency: Dependency) -> None:
         """Add a directed dependency between two existing entities.
 
-        The dependency is stored under the source entity in the adjacency list.
-        This direction is important because the simulator later follows edges
-        from a disrupted source to the entities that may be affected.
+        The dependency is stored under the source entity. This direction lets
+        the simulator follow outgoing edges from a disrupted entity toward
+        entities that may be affected.
 
         Args:
-            dependency: The directed Dependency object to add.
+            dependency: Directed Dependency object to add.
 
         Raises:
-            TypeError: If the supplied value is not a Dependency.
+            TypeError: If the value is not a Dependency.
             KeyError: If either endpoint does not exist.
-            ValueError: If the same directed dependency already exists.
+            ValueError: If the dependency already exists.
         """
 
         if not isinstance(dependency, Dependency):
@@ -114,50 +130,61 @@ class DependencyGraph:
                 "Only Dependency objects can be added to the graph."
             )
 
-        # Both entities must exist before an edge can connect them. This keeps
-        # the graph valid and prevents dependencies from pointing to missing
-        # nodes.
         if dependency.source_id not in self.entities:
             raise KeyError(
-                f"Source entity '{dependency.source_id}' was not found."
+                f"Source entity '{dependency.source_id}' "
+                "was not found."
             )
 
         if dependency.target_id not in self.entities:
             raise KeyError(
-                f"Target entity '{dependency.target_id}' was not found."
+                f"Target entity '{dependency.target_id}' "
+                "was not found."
             )
 
-        # Search only the outgoing edges of the source entity. This is more
-        # efficient than examining every edge in the complete graph.
-        for existing_dependency in self.adjacency_list[
+        # Phase 2 scanned the source's outgoing dependency list. Phase 3 uses
+        # a set, making duplicate detection average O(1).
+        if dependency.target_id in self._adjacency_targets[
             dependency.source_id
         ]:
-            if existing_dependency.target_id == dependency.target_id:
-                raise ValueError(
-                    f"Dependency from '{dependency.source_id}' "
-                    f"to '{dependency.target_id}' already exists."
-                )
+            raise ValueError(
+                f"Dependency from '{dependency.source_id}' "
+                f"to '{dependency.target_id}' already exists."
+            )
 
-        self.adjacency_list[dependency.source_id].append(dependency)
+        self.adjacency_list[dependency.source_id].append(
+            dependency
+        )
 
-    def get_dependencies(self, source_id: str) -> list[Dependency]:
-        """Return the outgoing dependencies of one entity.
+        self._adjacency_targets[dependency.source_id].add(
+            dependency.target_id
+        )
 
-        A copy of the list is returned so outside code cannot accidentally
-        modify the graph's internal adjacency list.
+        self._version += 1
+
+    def get_dependencies(
+        self,
+        source_id: str,
+    ) -> list[Dependency]:
+        """Return outgoing dependencies for one entity.
+
+        A copy is returned so external code cannot accidentally modify the
+        graph's internal adjacency list.
 
         Args:
-            source_id: The source entity whose dependencies are requested.
+            source_id: Source entity whose dependencies are requested.
 
         Returns:
-            A list of outgoing Dependency objects.
+            List of outgoing Dependency objects.
 
         Raises:
             KeyError: If the source entity does not exist.
         """
 
         if source_id not in self.entities:
-            raise KeyError(f"Entity '{source_id}' was not found.")
+            raise KeyError(
+                f"Entity '{source_id}' was not found."
+            )
 
         return list(self.adjacency_list[source_id])
 
@@ -166,111 +193,121 @@ class DependencyGraph:
         source_id: str,
         target_id: str,
     ) -> None:
-        """Remove a directed dependency from the graph.
+        """Remove one directed dependency.
 
         Args:
-            source_id: The ID of the source entity.
-            target_id: The ID of the target entity.
+            source_id: Source entity ID.
+            target_id: Target entity ID.
 
         Raises:
             KeyError: If the source entity or dependency does not exist.
         """
 
         if source_id not in self.entities:
-            raise KeyError(f"Entity '{source_id}' was not found.")
+            raise KeyError(
+                f"Entity '{source_id}' was not found."
+            )
 
-        dependencies = self.adjacency_list[source_id]
+        # The target index provides a quick existence check before the list is
+        # rebuilt without the selected edge.
+        if target_id not in self._adjacency_targets[source_id]:
+            raise KeyError(
+                f"Dependency from '{source_id}' "
+                f"to '{target_id}' was not found."
+            )
 
-        # Build a new list that excludes the requested edge. Rebuilding the
-        # list is safe because it avoids modifying a list while iterating over it.
-        updated_dependencies = [
+        self.adjacency_list[source_id] = [
             dependency
-            for dependency in dependencies
+            for dependency in self.adjacency_list[source_id]
             if dependency.target_id != target_id
         ]
 
-        # If both lists have the same size, no matching edge was removed.
-        if len(updated_dependencies) == len(dependencies):
-            raise KeyError(
-                f"Dependency from '{source_id}' to "
-                f"'{target_id}' was not found."
-            )
-
-        self.adjacency_list[source_id] = updated_dependencies
+        self._adjacency_targets[source_id].remove(target_id)
+        self._version += 1
 
     def remove_entity(self, entity_id: str) -> None:
-        """Remove an entity and every dependency connected to it.
+        """Remove an entity and all connected dependencies.
 
-        Removing a node requires two separate operations:
+        Removing an entity requires deleting:
 
-        1. Remove its outgoing dependencies by deleting its adjacency-list entry.
-        2. Remove incoming dependencies stored under other source entities.
+        1. The entity record.
+        2. Its outgoing dependencies.
+        3. Incoming dependencies stored under other source entities.
 
         Args:
-            entity_id: The ID of the entity to remove.
+            entity_id: ID of the entity to remove.
 
         Raises:
             KeyError: If the entity does not exist.
         """
 
         if entity_id not in self.entities:
-            raise KeyError(f"Entity '{entity_id}' was not found.")
+            raise KeyError(
+                f"Entity '{entity_id}' was not found."
+            )
 
-        # Remove the node and all edges that originate from it.
+        # Remove the entity and every dependency originating from it.
         del self.entities[entity_id]
         del self.adjacency_list[entity_id]
+        del self._adjacency_targets[entity_id]
 
-        # Incoming edges are stored in other entities' adjacency lists.
-        # Each list must therefore be checked and rebuilt without edges whose
-        # target is the deleted entity.
+        # Incoming dependencies are stored in other adjacency lists. The set
+        # index avoids rebuilding lists that do not contain the removed node.
         for source_id, dependencies in self.adjacency_list.items():
-            self.adjacency_list[source_id] = [
-                dependency
-                for dependency in dependencies
-                if dependency.target_id != entity_id
-            ]
+            if entity_id in self._adjacency_targets[source_id]:
+                self.adjacency_list[source_id] = [
+                    dependency
+                    for dependency in dependencies
+                    if dependency.target_id != entity_id
+                ]
 
-    def breadth_first_traversal(self, start_id: str) -> list[str]:
-        """Visit all entities reachable from a starting entity using BFS.
+                self._adjacency_targets[source_id].remove(
+                    entity_id
+                )
 
-        Breadth-first search processes nodes level by level. In this project,
-        that means direct dependencies are visited before dependencies that
-        are two or more steps away.
+        self._version += 1
+
+    def breadth_first_traversal(
+        self,
+        start_id: str,
+    ) -> list[str]:
+        """Visit all reachable entities using Breadth-First Search.
+
+        BFS processes direct dependencies before moving to more distant
+        dependency levels.
 
         Args:
-            start_id: The entity where traversal begins.
+            start_id: Entity where traversal begins.
 
         Returns:
-            Entity IDs in the order they were visited.
+            Entity IDs in visitation order.
 
         Raises:
             KeyError: If the starting entity does not exist.
         """
 
         if start_id not in self.entities:
-            raise KeyError(f"Entity '{start_id}' was not found.")
+            raise KeyError(
+                f"Entity '{start_id}' was not found."
+            )
 
-        # deque supports efficient removal from the front. Using list.pop(0)
-        # would require shifting the remaining elements and would be slower.
+        # deque supports O(1) removal from the front. A regular list with
+        # pop(0) would shift remaining elements and become less efficient.
         queue = deque([start_id])
 
-        # The set prevents the same entity from being added repeatedly. It also
-        # ensures that traversal ends correctly if the graph contains a cycle.
+        # The visited set prevents duplicate processing and ensures that BFS
+        # terminates if the graph contains a cycle.
         visited = {start_id}
 
         traversal_order: list[str] = []
 
         while queue:
-            # Remove the entity that has waited in the queue the longest.
             current_id = queue.popleft()
             traversal_order.append(current_id)
 
-            # Follow every outgoing edge from the current entity.
             for dependency in self.adjacency_list[current_id]:
                 target_id = dependency.target_id
 
-                # Add each target only once. Without this check, a cycle such as
-                # A -> B -> C -> A could make traversal continue indefinitely.
                 if target_id not in visited:
                     visited.add(target_id)
                     queue.append(target_id)
@@ -278,15 +315,13 @@ class DependencyGraph:
         return traversal_order
 
     def entity_count(self) -> int:
-        """Return the current number of entities in the graph."""
+        """Return the current number of entities."""
 
         return len(self.entities)
 
     def dependency_count(self) -> int:
-        """Return the total number of directed dependencies in the graph."""
+        """Return the total number of directed dependencies."""
 
-        # Each adjacency-list value contains the outgoing edges of one entity.
-        # Summing their lengths gives the total number of graph edges.
         return sum(
             len(dependencies)
             for dependencies in self.adjacency_list.values()
